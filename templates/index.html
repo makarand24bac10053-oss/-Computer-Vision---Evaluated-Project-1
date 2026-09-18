@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VisionCart-Inspect | Automated Retail & Vision QC System</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css" id="primary-css">
+    <script>
+        // Automatic fallback for direct file opening or Live Server
+        if (window.location.protocol === 'file:' || window.location.pathname.includes('/templates/')) {
+            const relLink = document.createElement('link');
+            relLink.rel = 'stylesheet';
+            relLink.href = '../static/css/style.css';
+            document.head.appendChild(relLink);
+        }
+    </script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Bar -->
+        <header class="top-nav">
+            <div class="nav-brand">
+                <div class="brand-logo">
+                    <i class="fa-solid fa-eye"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>VisionCart<span class="highlight">-Inspect</span></h1>
+                    <p class="brand-tagline">Industrial Edge Inspection & Autonomous Retail Checkout AI</p>
+                </div>
+            </div>
+
+            <!-- Header Quick Telemetry Stats -->
+            <div class="nav-telemetry">
+                <div class="stat-pill">
+                    <span class="stat-label"><i class="fa-solid fa-barcode"></i> Scans</span>
+                    <span class="stat-value" id="stat-total-scans">0</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-label"><i class="fa-solid fa-circle-check text-success"></i> Pass Rate</span>
+                    <span class="stat-value" id="stat-pass-rate">100%</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-label"><i class="fa-solid fa-cart-shopping text-accent"></i> Cart</span>
+                    <span class="stat-value" id="stat-cart-count">0 items</span>
+                </div>
+                <div class="status-indicator online" id="sys-status-badge">
+                    <span class="pulse-dot" id="sys-status-dot"></span> <span id="sys-status-text">System Live</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Backend Notice Banner (Shown when Flask server is offline) -->
+        <div id="backend-notice-banner" class="backend-notice-banner hidden">
+            <i class="fa-solid fa-circle-info"></i>
+            <span><b>Preview Mode Active:</b> Flask server not detected at <code>http://127.0.0.1:5000</code>. Running in offline client preview mode. To activate real-time OpenCV edge detection and defect scoring, launch <code>run_dashboard.bat</code> or run <code>python app.py</code> in your terminal.</span>
+        </div>
+
+        <!-- Main Workspace -->
+        <main class="main-content">
+            <!-- Left Workspace: Vision Inspection Console -->
+            <section class="inspection-panel">
+                <!-- Source Control Bar -->
+                <div class="card source-selector-card">
+                    <div class="source-tabs">
+                        <button class="source-tab active" id="tab-samples" onclick="switchSourceMode('samples')">
+                            <i class="fa-solid fa-boxes-stacked"></i> Test Samples
+                        </button>
+                        <button class="source-tab" id="tab-upload" onclick="switchSourceMode('upload')">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Upload Image
+                        </button>
+                        <button class="source-tab" id="tab-camera" onclick="switchSourceMode('camera')">
+                            <i class="fa-solid fa-camera"></i> Live Camera
+                        </button>
+                    </div>
+
+                    <!-- Test Sample Dropdown Toolbar -->
+                    <div class="source-toolbar" id="toolbar-samples">
+                        <label for="sample-select"><i class="fa-solid fa-tag"></i> Select Retail Package:</label>
+                        <select id="sample-select" onchange="loadSelectedSample()">
+                            <option value="">Loading test samples...</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="runInspection()"><i class="fa-solid fa-magnifying-glass"></i> Inspect Sample</button>
+                    </div>
+
+                    <!-- Upload Controls -->
+                    <div class="source-toolbar hidden" id="toolbar-upload">
+                        <input type="file" id="image-file-input" accept="image/*" onchange="handleFileUpload(event)">
+                        <button class="btn btn-primary" onclick="triggerFileUpload()"><i class="fa-solid fa-file-image"></i> Choose File</button>
+                        <span id="upload-filename" class="upload-hint">No file selected</span>
+                    </div>
+
+                    <!-- Webcam Controls -->
+                    <div class="source-toolbar hidden" id="toolbar-camera">
+                        <button class="btn btn-primary" id="btn-start-camera" onclick="startCamera()"><i class="fa-solid fa-video"></i> Start Webcam</button>
+                        <button class="btn btn-warning hidden" id="btn-capture-camera" onclick="captureCameraFrame()"><i class="fa-solid fa-camera-retro"></i> Capture & Inspect</button>
+                        <button class="btn btn-outline hidden" id="btn-stop-camera" onclick="stopCamera()"><i class="fa-solid fa-stop"></i> Stop</button>
+                    </div>
+                </div>
+
+                <!-- Live Vision Display HUD -->
+                <div class="card viewport-card">
+                    <div class="viewport-header">
+                        <div class="viewport-title">
+                            <i class="fa-solid fa-microchip"></i> Inspection Viewport
+                        </div>
+                        <!-- Pipeline View Switcher -->
+                        <div class="pipeline-switcher">
+                            <button class="view-btn active" data-view="annotated" onclick="switchPipelineView('annotated')">Annotated HUD</button>
+                            <button class="view-btn" data-view="heatmap" onclick="switchPipelineView('heatmap')">Defect Heatmap</button>
+                            <button class="view-btn" data-view="edges" onclick="switchPipelineView('edges')">Edge Anomalies</button>
+                            <button class="view-btn" data-view="clahe_enhanced" onclick="switchPipelineView('clahe_enhanced')">CLAHE Enhanced</button>
+                            <button class="view-btn" data-view="original" onclick="switchPipelineView('original')">Raw Input</button>
+                        </div>
+                    </div>
+
+                    <div class="viewport-stage" id="viewport-stage">
+                        <div class="loading-overlay hidden" id="loading-overlay">
+                            <div class="spinner"></div>
+                            <span>Analyzing Surface Geometry & Edge Gradients...</span>
+                        </div>
+                        <img id="main-display-img" src="" alt="Inspection Feed" class="display-image">
+                        <video id="webcam-video" autoplay playsinline class="display-video hidden"></video>
+
+                        <!-- Empty State Placeholder -->
+                        <div class="viewport-placeholder" id="viewport-placeholder">
+                            <i class="fa-solid fa-barcode fa-4x"></i>
+                            <h3>No Active Inspection Frame</h3>
+                            <p>Select a retail sample or capture an image to initialize the computer vision pipeline.</p>
+                        </div>
+                    </div>
+
+                    <!-- Parameter Fine-Tuning Slider Bar -->
+                    <div class="vision-tuning-bar">
+                        <div class="slider-group">
+                            <label for="canny-low-slider">Canny Low Hysteresis: <span id="canny-low-val">50</span></label>
+                            <input type="range" id="canny-low-slider" min="10" max="150" value="50" oninput="updateCannySlider('low', this.value)">
+                        </div>
+                        <div class="slider-group">
+                            <label for="canny-high-slider">Canny High Hysteresis: <span id="canny-high-val">150</span></label>
+                            <input type="range" id="canny-high-slider" min="50" max="300" value="150" oninput="updateCannySlider('high', this.value)">
+                        </div>
+                        <button class="btn btn-sm btn-outline" onclick="runInspection()" title="Re-inspect with updated thresholds">
+                            <i class="fa-solid fa-arrows-rotate"></i> Re-Calculate
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Inspection Result Analytics Card -->
+                <div class="card result-card">
+                    <div class="result-header">
+                        <div class="product-identity">
+                            <h2 id="res-product-name">-- Awaiting Product --</h2>
+                            <div class="product-meta">
+                                <span class="badge badge-outline" id="res-sku">SKU: N/A</span>
+                                <span class="badge badge-outline" id="res-barcode">Optical: None</span>
+                                <span class="badge badge-outline" id="res-method">Method: N/A</span>
+                                <span class="badge badge-outline" id="res-price">Price: $0.00</span>
+                            </div>
+                        </div>
+
+                        <!-- Big Verdict Status Badge -->
+                        <div class="verdict-container">
+                            <div class="verdict-badge badge-pending" id="res-verdict-badge">
+                                <i class="fa-solid fa-hourglass-half"></i> PENDING
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Score Meter -->
+                    <div class="defect-score-container">
+                        <div class="score-row">
+                            <span>Defect Sensitivity Score</span>
+                            <span class="score-val" id="res-defect-score">0.00%</span>
+                        </div>
+                        <div class="progress-bar-track">
+                            <div class="progress-bar-fill fill-pass" id="res-score-progress" style="width: 0%;"></div>
+                        </div>
+                        <div class="threshold-markers">
+                            <span class="marker pass-marker">0% (Pass)</span>
+                            <span class="marker warn-marker">8% (Warning)</span>
+                            <span class="marker reject-marker">22%+ (Reject)</span>
+                        </div>
+                    </div>
+
+                    <!-- Defect Tag Cloud -->
+                    <div class="detected-defects-wrap">
+                        <div class="defects-title"><i class="fa-solid fa-triangle-exclamation"></i> Detected Surface Anomalies:</div>
+                        <div class="defects-list" id="res-defects-list">
+                            <span class="empty-defects">No defects detected. Surface meets ISO/Retail grade specs.</span>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="result-actions">
+                        <button class="btn btn-success" id="btn-add-cart" onclick="addItemToCart()" disabled>
+                            <i class="fa-solid fa-cart-plus"></i> Accept & Add to Cart
+                        </button>
+                        <button class="btn btn-outline" id="btn-gen-pdf" onclick="generatePdfCertificate()" disabled>
+                            <i class="fa-solid fa-file-pdf"></i> Export QC Certificate (PDF)
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Workspace: Retail Checkout & Cart Drawer -->
+            <aside class="cart-panel">
+                <div class="card cart-card">
+                    <div class="cart-header">
+                        <h2><i class="fa-solid fa-cash-register"></i> Autonomous Cart</h2>
+                        <button class="btn btn-xs btn-outline" onclick="clearCart()"><i class="fa-solid fa-trash-can"></i> Clear</button>
+                    </div>
+
+                    <!-- Itemized Cart List -->
+                    <div class="cart-items-container" id="cart-items-container">
+                        <div class="cart-empty-placeholder" id="cart-empty">
+                            <i class="fa-solid fa-basket-shopping fa-3x"></i>
+                            <p>Cart is empty. Inspect and accept verified products to assemble your retail purchase.</p>
+                        </div>
+                    </div>
+
+                    <!-- Quarantined Items Warning Box -->
+                    <div class="quarantine-box hidden" id="quarantine-box">
+                        <div class="quarantine-title">
+                            <i class="fa-solid fa-shield-halved text-danger"></i> Quarantined Defective Items (<span id="quarantine-count">0</span>)
+                        </div>
+                        <p class="quarantine-desc">The following items failed automated surface quality checks and were blocked from retail billing:</p>
+                        <div class="quarantine-list" id="quarantine-list"></div>
+                    </div>
+
+                    <!-- Financial Summary -->
+                    <div class="cart-summary-table">
+                        <div class="summary-line">
+                            <span>Item Count:</span>
+                            <span id="summary-items-count">0</span>
+                        </div>
+                        <div class="summary-line">
+                            <span>Subtotal:</span>
+                            <span id="summary-subtotal">$0.00</span>
+                        </div>
+                        <div class="summary-line text-success">
+                            <span>Promo Discount (5%):</span>
+                            <span id="summary-discount">-$0.00</span>
+                        </div>
+                        <div class="summary-line">
+                            <span>Estimated Tax:</span>
+                            <span id="summary-tax">$0.00</span>
+                        </div>
+                        <div class="summary-line total-line">
+                            <span>Grand Total:</span>
+                            <span class="grand-total-val" id="summary-grand-total">$0.00</span>
+                        </div>
+                    </div>
+
+                    <!-- Checkout Button -->
+                    <button class="btn btn-primary btn-block btn-lg" id="btn-checkout" onclick="openCheckoutModal()" disabled>
+                        <i class="fa-solid fa-credit-card"></i> Proceed to Checkout
+                    </button>
+                </div>
+            </aside>
+        </main>
+
+        <!-- Bottom Section: Telemetry Log & Inspection Audit History -->
+        <section class="history-section">
+            <div class="card history-card">
+                <div class="history-header">
+                    <h2><i class="fa-solid fa-database"></i> Quality Inspection Audit Telemetry (SQLite Database)</h2>
+                    <button class="btn btn-sm btn-outline" onclick="loadAuditHistory()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                </div>
+                <div class="history-table-container">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Log ID</th>
+                                <th>Timestamp</th>
+                                <th>SKU</th>
+                                <th>Product Name</th>
+                                <th>Verdict</th>
+                                <th>Defect Score</th>
+                                <th>Defect Count</th>
+                                <th>Detection Method</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body">
+                            <tr>
+                                <td colspan="8" class="text-center">Loading inspection telemetry records...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Checkout Confirmation Modal -->
+        <div class="modal-backdrop hidden" id="checkout-modal">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2><i class="fa-solid fa-receipt"></i> Finalize Point-of-Sale Transaction</h2>
+                    <button class="close-btn" onclick="closeCheckoutModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="payment-method-selector">
+                        <label>Select Payment Gateway / Method:</label>
+                        <div class="payment-options">
+                            <label class="payment-radio active">
+                                <input type="radio" name="pay-method" value="UPI / BharatQR" checked>
+                                <i class="fa-solid fa-qrcode"></i> UPI / BharatQR
+                            </label>
+                            <label class="payment-radio">
+                                <input type="radio" name="pay-method" value="Credit/Debit Card (Tap & Pay)">
+                                <i class="fa-solid fa-credit-card"></i> Contactless Card
+                            </label>
+                            <label class="payment-radio">
+                                <input type="radio" name="pay-method" value="Autonomous Digital Wallet">
+                                <i class="fa-solid fa-wallet"></i> Digital Wallet
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="checkout-amount-callout">
+                        <span>Total Payable:</span>
+                        <h1 id="modal-checkout-total">$0.00</h1>
+                    </div>
+
+                    <!-- Receipt Result Box (Shown After Successful Checkout) -->
+                    <div class="receipt-result hidden" id="receipt-result-box">
+                        <div class="receipt-badge"><i class="fa-solid fa-circle-check"></i> Payment Completed</div>
+                        <p id="receipt-id-display">Receipt ID: REC-XXXX</p>
+                        <a id="download-invoice-link" href="#" target="_blank" class="btn btn-success btn-block">
+                            <i class="fa-solid fa-file-arrow-down"></i> Download Itemized Tax Invoice (PDF)
+                        </a>
+                    </div>
+                </div>
+                <div class="modal-footer" id="modal-footer">
+                    <button class="btn btn-outline" onclick="closeCheckoutModal()">Cancel</button>
+                    <button class="btn btn-primary" id="btn-confirm-pay" onclick="processPayment()">
+                        <i class="fa-solid fa-lock"></i> Authorize & Pay
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden canvas for camera frames -->
+    <!-- Dynamic script loader supporting both Flask server and direct browser opening -->
+    <script>
+        const scriptPath = (window.location.protocol === 'file:' || window.location.pathname.includes('/templates/'))
+            ? '../static/js/app.js'
+            : '/static/js/app.js';
+        const s = document.createElement('script');
+        s.src = scriptPath;
+        document.body.appendChild(s);
+    </script>
+</body>
+</html>
